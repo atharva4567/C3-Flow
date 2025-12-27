@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Recorder</title>
+</head>
+
+<body>
+    <script>
+const { ipcRenderer } = require('electron');
+
+let audioContext = null;
+let mediaStream = null;
+let workletNode = null;
+
+async function startCapture() {
+    try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: { sampleRate: 16000, channelCount: 1, echoCancellation: false, noiseSuppression: false }
+        });
+        audioContext = new AudioContext({ sampleRate: 16000 });
+        await audioContext.audioWorklet.addModule('recorder-worklet.js');
+        const source = audioContext.createMediaStreamSource(mediaStream);
+        workletNode = new AudioWorkletNode(audioContext, 'recorder-processor');
+        workletNode.port.onmessage = e => ipcRenderer.send('audio-data', e.data);
+        source.connect(workletNode);
+    } catch (err) {
+        ipcRenderer.send('capture-error', err.message);
+    }
+}
+
+function stopCapture() {
+    if (workletNode) { workletNode.disconnect(); workletNode = null; }
+    if (audioContext) { audioContext.close(); audioContext = null; }
+    if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+}
+
+ipcRenderer.on('start-capture', startCapture);
+ipcRenderer.on('stop-capture', stopCapture);
+    </script>
+</body>
+
+</html>
